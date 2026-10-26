@@ -1,0 +1,631 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>Disagreement Reason Labelling</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a labelling desk. Row list on the left, the comment in the middle, the four reasons with their labelling guide on the right; stacks on phones. */
+:root {
+  --bg: #f3f5f7; --surface: #ffffff; --sunk: #eaeef2; --ink: #17202b; --muted: #586474; --line: #d6dce3;
+  --accent: #1f6f78; --accent-ink: #ffffff; --accent-soft: #dcefef;
+  --support: #2b7a55; --support-soft: #e2f2ea; --oppose: #b0443a; --oppose-soft: #f8e4e1; --neutral: #66707d; --neutral-soft: #e9ecef;
+  --c-sloppy: #8a6a14; --c-amb: #6a4c93; --c-miss: #2f6690; --c-subj: #a1502b; --c-other: #66707d;
+  --warn: #9a5b00; --warn-soft: #fbefd9;
+  --f-ui: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --f-read: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --r: 8px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12171d; --surface: #1a2129; --sunk: #222b35; --ink: #e6ebf0; --muted: #9aa6b4; --line: #313c48;
+  --accent: #5fb7bf; --accent-ink: #0d1a1c; --accent-soft: #1d3638;
+  --support: #6cc49a; --support-soft: #1d3329; --oppose: #ec8a7f; --oppose-soft: #3a2220; --neutral: #a3adb9; --neutral-soft: #2a323c;
+  --c-sloppy: #d8b45a; --c-amb: #b79be0; --c-miss: #7fb3dc; --c-subj: #e59a74; --c-other: #a3adb9;
+  --warn: #e8b05a; --warn-soft: #3a2d17; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12171d; --surface: #1a2129; --sunk: #222b35; --ink: #e6ebf0; --muted: #9aa6b4; --line: #313c48;
+  --accent: #5fb7bf; --accent-ink: #0d1a1c; --accent-soft: #1d3638;
+  --support: #6cc49a; --support-soft: #1d3329; --oppose: #ec8a7f; --oppose-soft: #3a2220; --neutral: #a3adb9; --neutral-soft: #2a323c;
+  --c-sloppy: #d8b45a; --c-amb: #b79be0; --c-miss: #7fb3dc; --c-subj: #e59a74; --c-other: #a3adb9;
+  --warn: #e8b05a; --warn-soft: #3a2d17; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-ui); font-size: 14px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 32px }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface) }
+button, input, textarea { font: inherit; color: inherit }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.mono { font-family: var(--f-mono); font-size: 12px }
+
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line);
+  margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px))) calc(-1 * max(16px, env(safe-area-inset-right, 0px)));
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)) }
+.top-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; justify-content: space-between }
+h1 { font-size: 17px; font-weight: 700; margin: 0; letter-spacing: -0.01em; text-wrap: balance }
+h1 small { font-weight: 500; color: var(--muted); font-size: 13px; margin-left: 8px }
+.progress { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center }
+.prog { display: grid; gap: 3px; min-width: 112px }
+.prog span { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-variant-numeric: tabular-nums }
+.prog b { color: var(--ink); font-weight: 600 }
+.bar { height: 5px; background: var(--sunk); border-radius: 3px; overflow: hidden }
+.bar i { display: block; height: 100%; background: var(--accent); width: 0 }
+nav.tabs { display: flex; gap: 2px; margin-top: 8px; overflow-x: auto }
+nav.tabs button { border: 0; background: none; padding: 8px 12px; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 600; cursor: pointer; white-space: nowrap }
+nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent) }
+.banner { margin-top: 12px; padding: 10px 12px; border-radius: var(--r); background: var(--warn-soft); color: var(--warn); font-weight: 500 }
+.banner.local { display: grid; gap: 8px; color: var(--ink) }
+.banner.local p { margin: 0; color: var(--warn); max-width: 90ch }
+.local-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.local-row label { font-weight: 600; font-size: 13px }
+.local-row input { width: auto; flex: 1 1 200px; max-width: 280px }
+#csvBox { min-height: 120px; font-family: var(--f-mono); font-size: 12px }
+
+.desk { display: grid; grid-template-columns: 200px minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 14px; margin-top: 14px; align-items: start }
+@media (max-width: 1150px) { .desk { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr) } .list-pane { grid-column: 1 / -1; order: 3 } }
+@media (max-width: 780px) { .desk { grid-template-columns: minmax(0, 1fr) } }
+.pane { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); min-width: 0 }
+.list-pane { display: flex; flex-direction: column; max-height: calc(100vh - 140px); position: sticky; top: 120px }
+@media (max-width: 1150px) { .list-pane { position: static; max-height: 420px } }
+.filters { display: grid; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line) }
+.chips { display: flex; flex-wrap: wrap; gap: 4px }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; font-weight: 500 }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+.rows { overflow-y: auto; flex: 1; padding: 4px 0 }
+.rowbtn { display: grid; grid-template-columns: 38px 1fr auto; gap: 8px; align-items: center; width: 100%; text-align: left; border: 0; background: none; padding: 6px 12px; cursor: pointer; font-size: 13px }
+.rowbtn:hover { background: var(--sunk) }
+.rowbtn[aria-current="true"] { background: var(--accent-soft) }
+.rowbtn .n { font-family: var(--f-mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums }
+.rowbtn .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0 }
+.dot { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--line) }
+.dot.done { background: var(--accent); border-color: var(--accent) }
+.list-foot { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted) }
+
+.comment-pane { padding: 14px 16px 16px }
+.eyebrow { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 12px; color: var(--muted) }
+.tag { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; background: var(--sunk); color: var(--muted) }
+.tag.core { background: var(--accent-soft); color: var(--accent) }
+.topic { font-size: 17px; font-weight: 700; margin: 6px 0 10px; letter-spacing: -0.01em; text-wrap: balance }
+.topic small { display: block; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 2px }
+.labels { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px }
+.lab { display: inline-flex; gap: 6px; align-items: baseline; padding: 5px 10px; border-radius: 6px; font-weight: 600 }
+.lab .who { font-family: var(--f-mono); font-size: 12px; font-weight: 500; opacity: 0.85 }
+.lab.Support { background: var(--support-soft); color: var(--support) }
+.lab.Oppose { background: var(--oppose-soft); color: var(--oppose) }
+.lab.Neutral { background: var(--neutral-soft); color: var(--neutral) }
+.vs, .also { color: var(--muted); font-size: 12px }
+.text { font-family: var(--f-read); font-size: 15px; line-height: 1.55; max-width: 68ch; overflow-wrap: anywhere }
+.text { white-space: pre-wrap }
+.meta-line { margin-top: 10px; font-size: 12px; color: var(--muted) }
+details.ctx { margin-top: 16px; border-top: 1px dashed var(--line); padding-top: 12px }
+details.ctx summary { cursor: pointer; font-weight: 600; color: var(--muted) }
+.ctx-body { display: grid; gap: 10px; margin-top: 10px; font-size: 14px }
+.ctx-body .k { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600 }
+.ctx-body .v { font-family: var(--f-read); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--sunk); padding: 8px 10px; border-radius: 6px; max-height: 280px; overflow: auto }
+
+.form-pane { padding: 12px 14px; display: grid; gap: 10px; position: sticky; top: 120px; max-height: calc(100vh - 136px); overflow-y: auto }
+@media (max-width: 780px) { .form-pane { position: static; max-height: none } }
+.field { display: grid; gap: 6px }
+.lbl { font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap }
+.hint { font-weight: 400; color: var(--muted); font-size: 12px }
+.cats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px }
+@media (max-width: 560px) { .cats { grid-template-columns: minmax(0, 1fr) } }
+.cat { --c: var(--c-other); display: grid; gap: 3px; align-content: start; text-align: left; width: 100%; border: 1px solid var(--line); border-left: 4px solid var(--c);
+  background: var(--surface); border-radius: 6px; padding: 7px 9px; cursor: pointer }
+.cat.k-Other { grid-column: 1 / -1 }
+.cat:hover { background: var(--sunk) }
+.cat[aria-checked="true"] { background: var(--sunk); border-color: var(--c); box-shadow: inset 0 0 0 1px var(--c) }
+.cat .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px }
+.cat .name { font-weight: 700; color: var(--c) }
+.cat .sandri { font-size: 11px; color: var(--muted) }
+.cat .ask { font-size: 13px; font-weight: 500 }
+.cat ul { margin: 0; padding-left: 14px; font-size: 11.5px; line-height: 1.35; color: var(--muted); display: grid; gap: 1px }
+.cat .key { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--muted) }
+.k-Sloppy { --c: var(--c-sloppy) } .k-Missing { --c: var(--c-miss) } .k-Ambiguity { --c: var(--c-amb) } .k-Subjectivity { --c: var(--c-subj) } .k-Other { --c: var(--c-other) }
+.seg { display: flex; flex-wrap: wrap; gap: 4px }
+.seg button { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 13px }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+.hint.req { color: var(--oppose) }
+input[type=text].missing { border-color: var(--oppose); box-shadow: inset 0 0 0 1px var(--oppose) }
+input[type=text], textarea { width: 100%; border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 6px 9px; resize: vertical; min-height: 34px }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 12px }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 7px 12px; cursor: pointer; font-weight: 600 }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink) }
+.btn:disabled, .cat:disabled, .seg button:disabled { opacity: 0.5; cursor: not-allowed }
+.status { font-size: 12px; color: var(--muted); min-height: 1.2em }
+.status.err { color: var(--oppose) }
+.kbd { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px }
+
+.doc { max-width: 900px; margin-top: 16px; display: grid; gap: 16px }
+.doc h2 { font-size: 18px; margin: 0; text-wrap: balance }
+.doc .lead { max-width: 75ch; margin: 0; color: var(--muted) }
+ol.steps { margin: 0; padding-left: 20px; display: grid; gap: 8px; max-width: 80ch }
+.guideline { font-family: var(--f-read); font-size: 15px; max-width: 75ch; display: grid; gap: 4px }
+.guideline .h { font-family: var(--f-ui); font-weight: 700; font-size: 13px; letter-spacing: 0.04em; margin-top: 10px }
+.guideline .li { padding-left: 14px }
+table.coders { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
+table.coders th, table.coders td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line) }
+table.coders th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted) }
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r) }
+.empty { padding: 24px; color: var(--muted); text-align: center }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+</style>
+
+<header class="top">
+  <div class="top-row">
+    <h1>Disagreement Reason Labelling <small>after Sandri et al. 2023</small></h1>
+    <div class="progress" id="progress" aria-label="Progress"></div>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-code" data-view="code" aria-selected="true">Label</button>
+    <button role="tab" id="tab-guide" data-view="guide" aria-selected="false">Stance guidelines</button>
+    <button role="tab" id="tab-coders" data-view="coders" aria-selected="false" hidden>Labellers</button>
+  </nav>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+<div id="localBar" class="banner local" hidden>
+  <p id="localText">Your labels are kept in this browser only. When you finish, or whenever you stop, download or copy them as a CSV and send it to the person who shared this page. Clearing your browser data deletes them.</p>
+  <div class="local-row">
+    <label for="labellerName">Your name</label>
+    <input type="text" id="labellerName" maxlength="80" placeholder="So the owner knows whose labels these are">
+    <button class="btn primary" id="dlBtn" type="button">Download CSV</button>
+    <button class="btn" id="copyBtn" type="button">Copy CSV</button>
+    <span class="status" id="localMsg" role="status"></span>
+  </div>
+  <textarea id="csvBox" readonly hidden aria-label="Your labels as CSV"></textarea>
+</div>
+
+<main>
+  <section id="view-code">
+    <div class="desk">
+      <aside class="pane list-pane" aria-label="Rows">
+        <div class="filters">
+          <div class="chips" id="pairChips" role="group" aria-label="Pair"></div>
+          <div class="chips" id="statusChips" role="group" aria-label="Status"></div>
+        </div>
+        <div class="rows" id="rowList"></div>
+        <div class="list-foot" id="listFoot"></div>
+      </aside>
+
+      <article class="pane comment-pane" id="commentPane" aria-live="polite">
+        <div class="empty">Loading the comments…</div>
+      </article>
+
+      <section class="pane form-pane" id="formPane" aria-label="Labelling">
+        <div class="field">
+          <span class="lbl">Why do these two annotators disagree? <span class="hint">check in order; keys 1 to 5, Ctrl+Enter for next</span></span>
+          <div class="cats" id="primary" role="radiogroup" aria-label="Main reason"></div>
+        </div>
+        <div class="field">
+          <span class="lbl">Second reason <span class="hint">optional, only if a second cause is also plausible</span></span>
+          <div class="seg" id="second" role="group" aria-label="Second reason"></div>
+        </div>
+        <div class="field" id="otherField" hidden>
+          <label class="lbl" for="otherReason">Describe the other reason <span class="hint req">required for Other</span></label>
+          <input type="text" id="otherReason" maxlength="400" placeholder="Why do these two labels differ?">
+        </div>
+        <div class="field">
+          <label class="lbl" for="notes">Notes <span class="hint">optional</span></label>
+          <textarea id="notes" maxlength="2000" rows="1"></textarea>
+        </div>
+        <div class="actions">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn" id="prevBtn" type="button">Previous</button>
+            <button class="btn primary" id="nextBtn" type="button">Save and next</button>
+          </div>
+          <button class="btn" id="clearBtn" type="button">Clear row</button>
+        </div>
+        <div class="status" id="status" role="status"></div>
+      </section>
+    </div>
+  </section>
+
+  <section id="view-guide" class="doc" hidden></section>
+  <section id="view-coders" class="doc" hidden></section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const KEY = { "Sloppy annotation": "k-Sloppy", "Missing information": "k-Missing", "Ambiguity": "k-Ambiguity", "Subjectivity": "k-Subjectivity", "Other": "k-Other" };
+  const PAIRS = ["A1–A3", "A1–A2", "A2–A3"];
+
+  const S = { data: null, rows: [], byKey: {}, idx: 0, pair: "all", status: "all", codes: {}, draft: {}, mode: "db", storageOk: false,
+              sheetUrl: "", labellerId: "", pending: {}, flushing: null, retry: null,
+              db: null, uid: null, user: null, writable: false, owner: false, downloads: null, queue: Promise.resolve(), timer: null };
+
+  const store = { get(k) { try { return JSON.parse(localStorage.getItem("drc:" + k)); } catch { return null; } },
+                  set(k, v) { try { localStorage.setItem("drc:" + k, JSON.stringify(v)); } catch {} } };
+  const keyOf = (r) => r.pair.replace("–", "-") + "_" + r.cid;
+  const labOf = (s) => { const [who, lab] = s.split(": "); return { who, lab }; };
+  const needsOther = (v) => !!v && (v.primary === "Other" || v.second === "Other");
+  const complete = (v) => !!(v && v.primary) && (!needsOther(v) || !!(v.other_reason || "").trim());
+  const coded = (k) => complete(S.codes[k]);
+  const labelOf = (name) => { const c = S.data.categories.find((x) => x.name === name); return c ? c.label : name; };
+
+  function setStatus(msg, err) { const s = $("status"); s.textContent = msg || ""; s.classList.toggle("err", !!err); }
+  function banner(msg) { const b = $("banner"); b.textContent = msg || ""; b.hidden = !msg; }
+
+  function showView(v) {
+    for (const b of document.querySelectorAll("nav.tabs button")) b.setAttribute("aria-selected", String(b.dataset.view === v));
+    for (const id of ["code", "guide", "coders"]) $("view-" + id).hidden = id !== v;
+    store.set("view", v);
+    if (v === "coders") renderCoders();
+  }
+  for (const b of document.querySelectorAll("nav.tabs button")) b.addEventListener("click", () => showView(b.dataset.view));
+
+  // ---------- progress and list ----------
+  function renderProgress() {
+    const box = $("progress"); box.replaceChildren();
+    for (const [name, f] of PAIRS.map((p) => [p, (r) => r.pair === p])) {
+      const rs = S.rows.filter(f), done = rs.filter((r) => coded(keyOf(r))).length;
+      const g = el("div", "prog"); const s = el("span"); s.append(name + " ", el("b", null, `${done} / ${rs.length}`));
+      const bar = el("div", "bar"); const i = el("i"); i.style.width = (rs.length ? 100 * done / rs.length : 0) + "%"; bar.append(i);
+      g.append(s, bar); box.append(g);
+    }
+  }
+  function chipGroup(box, opts, current, onPick) {
+    box.replaceChildren();
+    for (const [val, label] of opts) {
+      const c = el("button", "chip", label); c.type = "button"; c.setAttribute("aria-pressed", String(val === current));
+      c.addEventListener("click", () => onPick(val)); box.append(c);
+    }
+  }
+  function visibleRows() {
+    return S.rows.filter((r) => (S.pair === "all" || r.pair === S.pair) &&
+      (S.status === "all" || (S.status === "todo" ? !coded(keyOf(r)) : coded(keyOf(r)))));
+  }
+  function renderList() {
+    chipGroup($("pairChips"), [["all", "All pairs"], ...PAIRS.map((p) => [p, p])], S.pair, (v) => { S.pair = v; store.set("pair", v); renderList(); });
+    chipGroup($("statusChips"), [["all", "All"], ["todo", "To label"], ["done", "Labelled"]], S.status, (v) => { S.status = v; store.set("status", v); renderList(); });
+    const list = $("rowList"); list.replaceChildren();
+    const vis = visibleRows(); const cur = S.rows[S.idx]; const frag = document.createDocumentFragment();
+    for (const r of vis) {
+      const b = el("button", "rowbtn"); b.type = "button"; b.title = r.cid;
+      b.append(el("span", "n", "#" + r.i), el("span", "t", `${r.pair} · ${r.topic}`), el("span", "dot" + (coded(keyOf(r)) ? " done" : "")));
+      if (r === cur) b.setAttribute("aria-current", "true");
+      b.addEventListener("click", () => go(r.i - 1));
+      frag.append(b);
+    }
+    list.append(frag);
+    $("listFoot").textContent = `${vis.length} rows shown`;
+    const curBtn = list.querySelector('[aria-current="true"]'); if (curBtn) curBtn.scrollIntoView({ block: "nearest" });
+  }
+
+  // ---------- comment ----------
+  function renderComment() {
+    const r = S.rows[S.idx]; const pane = $("commentPane"); pane.replaceChildren();
+    if (!r) { pane.append(el("div", "empty", "No row selected.")); return; }
+    const eb = el("div", "eyebrow");
+    eb.append(el("span", "mono", "#" + r.i), el("span", "tag" + (r.set === "core" ? " core" : ""), r.set === "core" ? "core" : r.pair), el("span", "mono", r.cid));
+    const tp = el("div", "topic"); tp.append(el("small", null, "Topic"), document.createTextNode(r.topic));
+    const labs = el("div", "labels");
+    [labOf(r.la), labOf(r.lb)].forEach((x, i) => {
+      if (i === 1) labs.append(el("span", "vs", "vs"));
+      const l = el("span", "lab " + x.lab); l.append(el("span", "who", x.who), document.createTextNode(x.lab)); labs.append(l);
+    });
+    if (r.others) labs.append(el("span", "also", "Same comment also disputed in " + r.others));
+    const tx = el("div", "text", r.text);
+    const words = r.text.split(/\s+/).filter(Boolean).length;
+    const ml = el("div", "meta-line", `${words} words · the annotators saw only the topic and this text`);
+    const d = el("details", "ctx"); d.append(el("summary", null, "Context the annotators did not see"));
+    const cb = el("div", "ctx-body");
+    const kv = (k, v) => { const w = el("div"); w.append(el("div", "k", k), el("div", "v", v)); return w; };
+    cb.append(kv("Post title", r.title || "(none)"), kv("Parent comment", r.parent || "(none)"));
+    d.append(cb);
+    pane.append(eb, tp, labs, tx, ml, d);
+  }
+
+  // ---------- form ----------
+  const current = () => { const k = keyOf(S.rows[S.idx]); return S.draft[k] || { ...(S.codes[k] || {}) }; };
+  function renderForm() {
+    const r = S.rows[S.idx]; if (!r) return;
+    const v = current(); const box = $("primary"); box.replaceChildren();
+    S.data.categories.forEach((c, n) => {
+      const b = el("button", "cat " + KEY[c.name]); b.type = "button"; b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(v.primary === c.name)); b.disabled = !S.writable;
+      const head = el("div", "head"); const nm = el("span", "name", c.label);
+      const right = el("span", "sandri"); right.append(c.label !== c.name ? `Sandri: ${c.name}  ` : "", el("span", "key", String(n + 1)));
+      head.append(nm, right);
+      const ul = el("ul"); for (const cue of c.cues) ul.append(el("li", null, cue));
+      b.append(head, el("div", "ask", c.ask), ul);
+      b.addEventListener("click", () => pick(c.name));
+      box.append(b);
+    });
+    const sec = $("second"); sec.replaceChildren();
+    for (const c of S.data.categories.filter((c) => c.name !== v.primary)) {
+      const b = el("button", null, c.label); b.type = "button"; b.disabled = !S.writable || !v.primary;
+      b.setAttribute("aria-pressed", String(v.second === c.name));
+      b.addEventListener("click", () => edit({ second: v.second === c.name ? "" : c.name }));
+      sec.append(b);
+    }
+    $("otherField").hidden = !needsOther(v);
+    $("otherReason").value = v.other_reason || ""; $("otherReason").disabled = !S.writable;
+    $("otherReason").classList.toggle("missing", needsOther(v) && !(v.other_reason || "").trim());
+    $("notes").value = v.notes || ""; $("notes").disabled = !S.writable; $("clearBtn").disabled = !S.writable;
+    $("prevBtn").disabled = S.idx === 0;
+    $("nextBtn").textContent = S.writable ? "Save and next" : "Next";
+  }
+  function pick(name) {
+    const v = current();
+    edit({ primary: v.primary === name ? "" : name, second: v.second === name ? "" : v.second });
+  }
+  function edit(patch) {
+    if (!S.writable) return;
+    if (S.sheetUrl && !$("labellerName").value.trim()) {
+      setStatus("Enter your name at the top first, so your labels can be told apart.", true); $("labellerName").focus(); return;
+    }
+    const k = keyOf(S.rows[S.idx]);
+    S.draft[k] = { ...current(), ...patch };
+    if (!("notes" in patch) && !("other_reason" in patch)) renderForm();
+    if ("other_reason" in patch) $("otherReason").classList.toggle("missing", !patch.other_reason.trim());
+    setStatus("Unsaved changes");
+    clearTimeout(S.timer); S.timer = setTimeout(() => save(k), 800);
+  }
+  $("notes").addEventListener("input", (e) => edit({ notes: e.target.value }));
+  $("otherReason").addEventListener("input", (e) => edit({ other_reason: e.target.value }));
+
+  function save(k) {
+    clearTimeout(S.timer);
+    const d = S.draft[k]; if (!d || !S.writable) return Promise.resolve();
+    const r = S.byKey[k];
+    const body = { i: r.i, pair: r.pair, comment_id: r.cid, primary: d.primary || "", second: d.second || "",
+      other_reason: needsOther(d) ? (d.other_reason || "").trim() : "", notes: d.notes || "", updated: new Date().toISOString() };
+    const stamp = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (S.mode === "local") {
+      S.codes[k] = body; if (S.draft[k] === d) delete S.draft[k];
+      setStatus(saveLocal() ? "Saved in this browser " + stamp() : "Could not keep this in the browser. Copy your CSV now.", !S.storageOk);
+      renderProgress(); renderList();
+      if (S.sheetUrl) { S.pending[k] = 1; store.set("pending", S.pending); return flush(); }
+      return Promise.resolve();
+    }
+    setStatus("Saving…");
+    S.queue = S.queue.then(async () => {
+      try {
+        await S.db.collection(`codes/${S.uid}/rows`).doc(k).set(body);
+        S.codes[k] = body; if (S.draft[k] === d) delete S.draft[k];
+        await S.db.doc(`codes/${S.uid}`).set({ coded: Object.values(S.codes).filter(complete).length, updated: body.updated });
+        setStatus("Saved " + stamp());
+        renderProgress(); renderList();
+      } catch (e) { failWrite(e, k); }
+    });
+    return S.queue;
+  }
+  function failWrite(e, k) {
+    if (e && e.code === "invalid_argument") { enterLocal(); if (k && S.draft[k]) save(k); }
+    else if (e && e.code === "quota_exceeded") setStatus("The store is full: " + e.message, true);
+    else setStatus("Not saved. Check your connection and try again.", true);
+  }
+
+  // ---------- browser-only mode, for labellers who cannot save to the portal ----------
+  function saveLocal() {
+    try { localStorage.setItem("drc:labels", JSON.stringify(S.codes)); S.storageOk = true; } catch { S.storageOk = false; }
+    return S.storageOk;
+  }
+  function enterLocal() {
+    if (S.mode === "local") return;
+    S.mode = "local"; S.writable = true; S.draft = {};
+    S.codes = store.get("labels") || {};
+    S.storageOk = saveLocal();
+    $("localBar").hidden = false; banner("");
+    if (!S.storageOk) $("localText").textContent = "This browser will not keep your labels, so they are lost when you close the page. Copy or download your CSV before leaving, and send it to the person who shared this page.";
+    $("labellerName").value = store.get("name") || "";
+    $("dlBtn").hidden = !S.downloads && S.inClaude;
+    if (S.sheetUrl) {
+      $("localText").textContent = "Your labels are sent to the study automatically as you go, and a copy stays in this browser. Enter your name first. The CSV buttons are a backup in case sending fails.";
+      S.labellerId = store.get("labeller_id") || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+      store.set("labeller_id", S.labellerId);
+      S.pending = store.get("pending") || {};
+      flush();
+    }
+    renderProgress(); renderList(); renderForm();
+  }
+
+  // ---------- sending to the study's Google Sheet (plain web host only) ----------
+  async function send(k) {
+    const r = S.byKey[k]; const c = S.codes[k] || {};
+    const body = { labeller_id: S.labellerId, labeller: $("labellerName").value.trim(), key: k, i: r.i, pair: r.pair, comment_id: r.cid,
+      primary: c.primary || "", second: c.second || "", other_reason: c.other_reason || "", notes: c.notes || "", updated: c.updated || new Date().toISOString() };
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 20000);
+    try {
+      const res = await fetch(S.sheetUrl, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(body), signal: ctl.signal });
+      var out = await res.json();
+    } finally { clearTimeout(t); }
+    if (!out || !out.ok) throw new Error((out && out.error) || "rejected");
+  }
+  function flush() {
+    if (S.flushing) return S.flushing;
+    S.flushing = (async () => {
+      let failed = 0;
+      for (const k of Object.keys(S.pending)) {
+        try { await send(k); delete S.pending[k]; store.set("pending", S.pending); }
+        catch { failed++; }
+      }
+      const left = Object.keys(S.pending).length;
+      if (!left) setStatus("Saved and sent " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      else setStatus(`Saved in this browser; ${left} label${left > 1 ? "s" : ""} not sent yet (will retry). Keep working, or use Download CSV as a backup.`, true);
+      S.flushing = null;
+      if (left && !S.retry) S.retry = setTimeout(() => { S.retry = null; flush(); }, 30000);
+    })();
+    return S.flushing;
+  }
+  function localCsv() {
+    const cols = ["labeller", "i", "pair", "comment_id", "primary", "second", "other_reason", "notes", "updated"];
+    const q = (x) => { const s = String(x == null ? "" : x); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const name = $("labellerName").value.trim();
+    const rows = Object.values(S.codes).filter((r) => r.primary).sort((x, y) => x.i - y.i);
+    return { n: rows.length, text: [cols.join(","), ...rows.map((r) => [name, ...cols.slice(1).map((c) => r[c])].map(q).join(","))].join("\n") };
+  }
+  $("labellerName").addEventListener("input", (e) => store.set("name", e.target.value));
+  $("dlBtn").addEventListener("click", async () => {
+    const { n, text } = localCsv(); const msg = $("localMsg");
+    if (!n) { msg.textContent = "No labels yet."; return; }
+    const who = $("labellerName").value.trim().replace(/[^A-Za-z0-9_-]+/g, "_") || "labeller";
+    const filename = `disagreement_reason_labels_${who}.csv`;
+    if (!S.downloads) {   // a plain web page (GitHub Pages): an ordinary browser download
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + text], { type: "text/csv" })); a.download = filename;
+      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      msg.textContent = `Downloaded ${n} labels as ${filename}.`; return;
+    }
+    try { await S.downloads.save({ filename, data: "﻿" + text }); msg.textContent = `Saved ${n} labels.`; }
+    catch (e) { msg.textContent = e && e.code === "declined" ? "Save cancelled." : "Download did not work here. Use Copy CSV instead."; }
+  });
+  $("copyBtn").addEventListener("click", () => {
+    const { n, text } = localCsv(); const msg = $("localMsg"); const box = $("csvBox");
+    if (!n) { msg.textContent = "No labels yet."; return; }
+    const manual = () => { box.value = text; box.hidden = false; box.focus(); box.select(); msg.textContent = `Select all the text below and copy it (${n} labels).`; };
+    try { navigator.clipboard.writeText(text).then(() => { box.hidden = true; msg.textContent = `Copied ${n} labels. Paste them into an email or a file.`; }, manual); }
+    catch { manual(); }
+  });
+  async function go(i) {
+    const prev = S.rows[S.idx];
+    if (prev && S.writable && i !== S.idx) {
+      const v = current();
+      if (needsOther(v) && !(v.other_reason || "").trim()) {
+        setStatus("You chose Other: describe the reason before moving on.", true);
+        $("otherReason").classList.add("missing"); $("otherReason").focus(); return;
+      }
+    }
+    if (prev && S.draft[keyOf(prev)]) await save(keyOf(prev));
+    S.idx = Math.max(0, Math.min(S.rows.length - 1, i)); store.set("idx", S.idx);
+    renderComment(); renderForm(); renderList(); setStatus("");
+  }
+  function nextIndex() {
+    const vis = visibleRows(); const pos = vis.indexOf(S.rows[S.idx]);
+    const after = vis.slice(pos + 1).find((r) => !coded(keyOf(r))) || vis[pos + 1];
+    return after ? after.i - 1 : S.idx;
+  }
+  $("nextBtn").addEventListener("click", () => go(nextIndex()));
+  $("prevBtn").addEventListener("click", () => go(S.idx - 1));
+  $("clearBtn").addEventListener("click", () => {
+    const btn = $("clearBtn"); const k = keyOf(S.rows[S.idx]);
+    if (btn.dataset.armed !== "1") { btn.dataset.armed = "1"; btn.textContent = "Click again to clear"; setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "Clear row"; }, 3000); return; }
+    btn.dataset.armed = ""; btn.textContent = "Clear row";
+    delete S.draft[k]; clearTimeout(S.timer);
+    if (S.mode === "local") {
+      S.codes[k] = { ...(S.codes[k] || {}), primary: "", second: "", other_reason: "", notes: "", updated: new Date().toISOString() };
+      saveLocal(); setStatus("Cleared"); renderForm(); renderProgress(); renderList();
+      if (S.sheetUrl) { S.pending[k] = 1; store.set("pending", S.pending); flush(); }
+      return;
+    }
+    S.queue = S.queue.then(async () => { try { await S.db.collection(`codes/${S.uid}/rows`).doc(k).delete(); delete S.codes[k]; setStatus("Cleared"); renderForm(); renderProgress(); renderList(); } catch (e) { failWrite(e); } });
+  });
+  document.addEventListener("keydown", (e) => {
+    if ($("view-code").hidden || e.target.tagName === "TEXTAREA") {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !$("view-code").hidden) { e.preventDefault(); go(nextIndex()); }
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); go(nextIndex()); return; }
+    const n = Number(e.key);
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && n >= 1 && n <= S.data.categories.length) { e.preventDefault(); pick(S.data.categories[n - 1].name); }
+  });
+
+  // ---------- guidelines ----------
+  function renderGuide() {
+    const v = $("view-guide"); v.replaceChildren();
+    v.append(el("h2", null, "How to label"));
+    const ol = el("ol", "steps");
+    for (const s of [
+      "Each row is one pair of annotators (A1, A2, A3) who gave the same comment different stance labels. Say why these two disagree, not who is right.",
+      "Read the topic, the two labels and the comment. The annotators saw only the topic and the comment text.",
+      "Pick one main reason. Check the cards from the top down and take the first that fits: a slip, then missing context, then ambiguous text, then a personal judgement.",
+      "Add a second reason only when a second cause is also plausible. Sandri et al. gave about 40% of their items two.",
+      "Labels save automatically. Start with A1–A3, then A1–A2 and A2–A3. Within each pair rows are in random order, so you can stop anywhere.",
+      "A comment disputed by several pairs appears once per pair. Label each row for its own pair: the reason can differ.",
+    ]) ol.append(el("li", null, s));
+    v.append(ol, el("h2", null, "Stance guidelines the annotators used"));
+    const g = el("div", "guideline");
+    for (const line of S.data.guidelines) {
+      const t = line.trim();
+      const isHead = /^\d+\.\s+[A-Z][A-Z\s/&]+$/.test(t) || /^[A-Z][A-Z\s:]+$/.test(t);
+      g.append(el("div", isHead ? "h" : (t.startsWith("-") ? "li" : ""), t));
+    }
+    v.append(g, el("p", "lead", "Categories from Sandri, Leonardelli, Tonelli and Jezek (2023), Why Don't You Do It Right? Analysing Annotators' Disagreement in Subjective Tasks, EACL."));
+  }
+
+  // ---------- owner: coders and export ----------
+  async function loadAll() {
+    const coders = await S.db.collection("codes").get(); const out = [];
+    for (const d of coders.docs) {
+      const rows = await S.db.collection(`codes/${d.id}/rows`).limit(1000).get();
+      out.push({ id: d.id, meta: d.data(), rows: rows.docs.map((x) => x.data()) });
+    }
+    return out;
+  }
+  async function renderCoders() {
+    const v = $("view-coders"); v.replaceChildren(el("h2", null, "Labellers"), el("p", "lead", "Only you, as the owner, see this tab and other people's labels. Labellers see only their own."));
+    if (!S.db) { v.append(el("div", "empty", "The label store is not available in this view.")); return; }
+    const wrap = el("div", "tablewrap"); wrap.append(el("div", "empty", "Loading…")); v.append(wrap);
+    try {
+      const all = await loadAll();
+      const ps = S.user ? await S.user.profiles(all.map((a) => a.id)) : {};
+      wrap.replaceChildren();
+      if (!all.length) { wrap.append(el("div", "empty", "No labels saved yet. Invite labellers by email as Editors; their labels appear here.")); return; }
+      const t = el("table", "coders"); const hr = el("tr");
+      for (const h of ["Labeller", "Labelled rows", ...PAIRS, "Last saved"]) hr.append(el("th", null, h));
+      t.append(hr);
+      for (const a of all) {
+        const done = a.rows.filter(complete); const tr = el("tr");
+        tr.append(el("td", null, (ps[a.id] && ps[a.id].name) || "Someone"), el("td", null, String(done.length)),
+          ...PAIRS.map((p) => el("td", null, String(done.filter((r) => r.pair === p).length))), el("td", null, ((a.meta && a.meta.updated) || "").slice(0, 16).replace("T", " ")));
+        t.append(tr);
+      }
+      wrap.append(t);
+      const bar = el("div"); bar.style.cssText = "display:flex;gap:12px;align-items:center;flex-wrap:wrap";
+      const btn = el("button", "btn primary", "Export all labels as CSV"); btn.type = "button"; const msg = el("span", "status");
+      btn.addEventListener("click", () => exportCsv(all, ps, msg));
+      bar.append(btn, msg);
+      if (!S.downloads) { btn.disabled = true; msg.textContent = "Saving files is not available here; ask Claude to export the labels instead."; }
+      v.append(bar);
+    } catch (e) { wrap.replaceChildren(el("div", "empty", "Could not load the labels. Try again in a moment.")); }
+  }
+  async function exportCsv(all, ps, msg) {
+    const cols = ["labeller", "labeller_id", "i", "pair", "comment_id", "primary", "second", "other_reason", "notes", "updated"];
+    const q = (x) => { const s = String(x == null ? "" : x); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = [cols.join(",")];
+    for (const a of all) for (const r of a.rows.sort((x, y) => x.i - y.i))
+      lines.push([(ps[a.id] && ps[a.id].name) || "", a.id, ...cols.slice(2).map((c) => r[c])].map(q).join(","));
+    try { await S.downloads.save({ filename: "disagreement_reason_labels.csv", data: "﻿" + lines.join("\n") }); msg.textContent = "Saved."; }
+    catch (e) { msg.textContent = e && e.code === "declined" ? "Save cancelled." : "Could not save the file."; }
+  }
+
+  // ---------- boot ----------
+  async function boot() {
+    try { S.data = await (await fetch("data.json")).json(); }
+    catch (e) { $("commentPane").replaceChildren(el("div", "empty", "Could not load the comments. Reload the page.")); return; }
+    try { S.sheetUrl = ((await (await fetch("config.json")).json()).sheetUrl || "").trim(); } catch { S.sheetUrl = ""; }
+    S.rows = S.data.rows; for (const r of S.rows) S.byKey[keyOf(r)] = r;
+    S.pair = store.get("pair") || "all"; S.status = store.get("status") || "all";
+    const idx = store.get("idx"); S.idx = Number.isInteger(idx) && idx >= 0 && idx < S.rows.length ? idx : 0;
+    renderGuide(); renderProgress(); renderList(); renderComment(); renderForm();
+    const h = location.hash.slice(1);
+    showView(["code", "guide"].includes(h) ? h : (store.get("view") === "guide" ? "guide" : "code"));
+    connect();
+  }
+  async function connect() {
+    const use = window.claude && window.claude.use ? window.claude.use : null;
+    S.inClaude = !!use;
+    if (!use) { enterLocal(); return; }
+    const [db, user, downloads] = await Promise.all([use("db"), use("user"), use("downloads")]);
+    S.db = db; S.user = user; S.downloads = downloads;
+    S.uid = user ? await user.id() : null;
+    let canWrite = null; try { canWrite = user ? await user.can("data.write") : null; } catch {}
+    if (!db || !S.uid || canWrite === false) { enterLocal(); return; }
+    S.writable = true;
+    try { S.owner = !!(await user.isOwner()); } catch { S.owner = false; }
+    $("tab-coders").hidden = !S.owner;
+    renderForm();
+    db.collection(`codes/${S.uid}/rows`).limit(1000).onSnapshot((snap) => {
+      if (S.mode === "local") return;
+      const m = {}; for (const d of snap.docs) m[d.id] = d.data();
+      S.codes = m; renderProgress(); renderList();
+      if (!S.draft[keyOf(S.rows[S.idx])]) renderForm();
+    }, (e) => { if (e && e.code === "revoked") { S.writable = false; banner("Access to the label store ended. Reload the page."); renderForm(); } });
+  }
+  boot();
+})();
+</script>
+
+</body></html>
