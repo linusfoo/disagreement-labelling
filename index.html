@@ -378,7 +378,7 @@ table.coders th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.
       S.codes[k] = body; if (S.draft[k] === d) delete S.draft[k];
       setStatus(saveLocal() ? "Saved in this browser " + stamp() : "Could not keep this in the browser. Copy your CSV now.", !S.storageOk);
       renderProgress(); renderList();
-      if (S.sheetUrl) { S.pending[k] = 1; store.set("pending", S.pending); return flush(); }
+      if (S.sheetUrl) { S.pending[k] = stampOf(); store.set("pending", S.pending); return flush(); }
       return Promise.resolve();
     }
     setStatus("Saving…");
@@ -435,13 +435,21 @@ table.coders th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.
     } finally { clearTimeout(t); }
     if (!out || !out.ok) throw new Error((out && out.error) || "rejected");
   }
+  const stampOf = () => Date.now() + "-" + Math.random().toString(36).slice(2, 8);
   function flush() {
     if (S.flushing) return S.flushing;
     const run = (async () => {
-      let failed = 0;
-      for (const k of Object.keys(S.pending)) {
-        try { await send(k); delete S.pending[k]; store.set("pending", S.pending); }
-        catch { failed++; }
+      // Each pending entry carries a version stamp. A row edited while its send is in flight gets a new stamp, so it is
+      // sent again with the latest content instead of being marked sent; each version is tried once per run.
+      const tried = {};
+      for (;;) {
+        const todo = Object.keys(S.pending).filter((k) => tried[k] !== S.pending[k]);
+        if (!todo.length) break;
+        for (const k of todo) {
+          const v = S.pending[k]; tried[k] = v;
+          try { await send(k); if (S.pending[k] === v) { delete S.pending[k]; store.set("pending", S.pending); } }
+          catch {}
+        }
       }
       const left = Object.keys(S.pending).length;
       if (!left) setStatus("Saved and sent " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
@@ -508,7 +516,7 @@ table.coders th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.
     if (S.mode === "local") {
       S.codes[k] = { ...(S.codes[k] || {}), primary: "", second: "", other_reason: "", notes: "", updated: new Date().toISOString() };
       saveLocal(); setStatus("Cleared"); renderForm(); renderProgress(); renderList();
-      if (S.sheetUrl) { S.pending[k] = 1; store.set("pending", S.pending); flush(); }
+      if (S.sheetUrl) { S.pending[k] = stampOf(); store.set("pending", S.pending); flush(); }
       return;
     }
     S.queue = S.queue.then(async () => { try { await S.db.collection(`codes/${S.uid}/rows`).doc(k).delete(); delete S.codes[k]; setStatus("Cleared"); renderForm(); renderProgress(); renderList(); } catch (e) { failWrite(e); } });
