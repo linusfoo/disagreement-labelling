@@ -437,7 +437,7 @@ table.coders th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.
   }
   function flush() {
     if (S.flushing) return S.flushing;
-    S.flushing = (async () => {
+    const run = (async () => {
       let failed = 0;
       for (const k of Object.keys(S.pending)) {
         try { await send(k); delete S.pending[k]; store.set("pending", S.pending); }
@@ -446,9 +446,10 @@ table.coders th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.
       const left = Object.keys(S.pending).length;
       if (!left) setStatus("Saved and sent " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
       else setStatus(`Saved in this browser; ${left} label${left > 1 ? "s" : ""} not sent yet (will retry). Keep working, or use Download CSV as a backup.`, true);
-      S.flushing = null;
       if (left && !S.retry) S.retry = setTimeout(() => { S.retry = null; flush(); }, 30000);
     })();
+    // Cleared once this run settles: the run can finish synchronously when nothing is pending.
+    S.flushing = run.finally(() => { S.flushing = null; });
     return S.flushing;
   }
   function localCsv() {
