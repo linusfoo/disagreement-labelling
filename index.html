@@ -595,7 +595,7 @@ table.coders th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.
   async function boot() {
     try { S.data = await (await fetch("data.json")).json(); }
     catch (e) { $("commentPane").replaceChildren(el("div", "empty", "Could not load the comments. Reload the page.")); return; }
-    try { S.sheetUrl = ((await (await fetch("config.json")).json()).sheetUrl || "").trim(); } catch { S.sheetUrl = ""; }
+    try { S.sheetUrl = ((await (await fetch("config.json", { cache: "no-store" })).json()).sheetUrl || "").trim(); } catch { S.sheetUrl = ""; }
     S.rows = S.data.rows; for (const r of S.rows) S.byKey[keyOf(r)] = r;
     S.pair = store.get("pair") || "all"; S.status = store.get("status") || "all";
     const idx = store.get("idx"); S.idx = Number.isInteger(idx) && idx >= 0 && idx < S.rows.length ? idx : 0;
