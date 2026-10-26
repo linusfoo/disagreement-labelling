@@ -514,7 +514,8 @@ table.coders th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.
     S.queue = S.queue.then(async () => { try { await S.db.collection(`codes/${S.uid}/rows`).doc(k).delete(); delete S.codes[k]; setStatus("Cleared"); renderForm(); renderProgress(); renderList(); } catch (e) { failWrite(e); } });
   });
   document.addEventListener("keydown", (e) => {
-    if ($("view-code").hidden || e.target.tagName === "TEXTAREA") {
+    const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) || e.target.isContentEditable;
+    if ($("view-code").hidden || typing) {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !$("view-code").hidden) { e.preventDefault(); go(nextIndex()); }
       return;
     }
